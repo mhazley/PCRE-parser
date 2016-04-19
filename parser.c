@@ -76,37 +76,27 @@ void buildTokenArray(const char* inputText, char*** tokenArray, unsigned int* to
 
 void tokenToRegexString(const char* inputText)
 {
-    pcre *reCompiled;
-    pcre_extra *pcreExtra;
     int pcreExecRet;
     int subStrVec[30];
-    const char *pcreErrorStr;
-    int pcreErrorOffset;
     const char* regexString = TOKEN_REGEX;
     const char *psubStrMatchStr;
     int j;
 
-    /* Build regex to decipher token */
-    reCompiled = pcre_compile(regexString, 0, &pcreErrorStr, &pcreErrorOffset, NULL);
 
-    /* Check outcome of pcre_compile */
-    if(reCompiled == NULL)
-    {
-        printf("ERROR: Could not compile '%s': %s\n", regexString, pcreErrorStr);
-        exit(1);
-    }
 
     printf("String to test: %s\n", inputText);
 
     /* Try to find the regex in inputText */
-    pcreExecRet = pcre_exec(reCompiled,
-                            NULL,
-                            inputText,
-                            (int)strlen(inputText), // length of string
-                            0,                      // Start looking at this point
-                            0,                      // OPTIONS
-                            subStrVec,
-                            30);                    // Length of subStrVec
+    // pcreExecRet = pcre_exec(reCompiled,
+    //                         NULL,
+    //                         inputText,
+    //                         (int)strlen(inputText), // length of string
+    //                         0,                      // Start looking at this point
+    //                         0,                      // OPTIONS
+    //                         subStrVec,
+    //                         30);                    // Length of subStrVec
+
+    pcreExecRet = doRegexMatch(&inputText, &regexString, subStrVec);
 
     /* There was an error */
     if(pcreExecRet < 0)
@@ -139,9 +129,39 @@ void tokenToRegexString(const char* inputText)
 
     printf("\n");
 
+    // We are all done..
+    return;
+}
+
+int doRegexMatch(const char** inputText, const char** regexString, int* subStrVec)
+{
+    int ret;
+    pcre *reCompiled;
+    const char *pcreErrorStr;
+    int pcreErrorOffset;
+
+    /* Build regex to decipher token */
+    reCompiled = pcre_compile(*regexString, 0, &pcreErrorStr, &pcreErrorOffset, NULL);
+
+    /* Check outcome of pcre_compile */
+    if(reCompiled == NULL)
+    {
+        printf("ERROR: Could not compile regex '%s': %s\n", *regexString, pcreErrorStr);
+        return PCRE_ERROR_BADOPTION;
+    }
+
+    ret = pcre_exec(reCompiled,
+                      NULL,
+                      *inputText,
+                      (int)strlen(*inputText),
+                      0,
+                      0,
+                      subStrVec,
+                      30);
+
     // Free up the regular expression.
     pcre_free(reCompiled);
 
-    // We are all done..
-    return;
+    return ret;
+
 }
