@@ -18,6 +18,7 @@ int main(int argc, char ** argv)
     char* lineRegex = NULL;
     char* oldLineRegex = NULL;
     char* regExSegment = NULL;
+    char* oldRegExSegment = NULL;
 
     buildTokenArray(argv[1], &tokenArray, &tokenCount);
 
@@ -41,16 +42,27 @@ int main(int argc, char ** argv)
             regExSegment = tokenArray[j];
         }
 
+        /* If we arent at the last segment.... */
+        if (j < (tokenCount - 1))
+        {
+            /* ...add a space on at the end to complete the segment */
+            regExSegment = concat(regExSegment, " ");
+        }
+
+        /* Now, join the whole segment onto the final regex */
         lineRegex = concat(lineRegex, regExSegment);
 
-        /* Freeing the memory used in concatenation */
+        /* Freeing the memory used in  main concatenation */
         if (oldLineRegex != NULL)
         {
             free(oldLineRegex);
         }
     }
 
-    printf("%s\n", lineRegex);
+    printf("Built the following regex: %s\n", lineRegex);
+
+    // Run the match on std in
+    matchStdIn(lineRegex);
 
     return 0;
 }
@@ -104,7 +116,7 @@ char* tokenToRegexString(const char* inputText)
     int subStrVec[30];
     const char* regexString = TOKEN_REGEX;
     const char* regexForWordAndSpace = "[\\S]*[\\s]";
-    const char* regexForWord = "[\\S]*";
+    const char* regexForClosingWord = "[\\S]*)";
     const char* psubStrMatchStr;
     char* regexReturn = NULL;
     char* newString = NULL;
@@ -113,7 +125,10 @@ char* tokenToRegexString(const char* inputText)
     int j;
     int tokenNumber;
 
-    pcreExecRet = doRegexMatch(&inputText, &regexString, subStrVec);
+    pcre* reCompiled;
+
+    reCompiled = compileRegex(regexString);
+    pcreExecRet = doRegexMatch(inputText, reCompiled, subStrVec);
 
     /* There was a match */
     if(pcreExecRet > 0)
@@ -127,9 +142,8 @@ char* tokenToRegexString(const char* inputText)
         if( (tokenMask & (0x01 << tokenNumber ) ) != 0)
         {
             /* We already have this token */
-            printf("%s\n", psubStrMatchStr);
-            printf("Duped token %d\n", tokenMask);
-            return regexReturn;
+            printf("ERROR: Duplicated token! It's best to make them sequential.\n");
+            exit(1);
         }
         else
         {
@@ -141,7 +155,7 @@ char* tokenToRegexString(const char* inputText)
         pcre_get_substring(inputText, subStrVec, pcreExecRet, 2, &(psubStrMatchStr));
         if (psubStrMatchStr[0] == 'G')
         {
-            printf("Token %d is agreedy modifier\n", tokenNumber);
+            printf("Token %d is a greedy modifier\n", tokenNumber);
             regexReturn = "([\\s\\S]*)";
         }
         else if (psubStrMatchStr[0] == 'S')
@@ -153,7 +167,7 @@ char* tokenToRegexString(const char* inputText)
             {
                 oldString = newString;
 
-                if (newString == NULL) newString = "";
+                if (newString == NULL) newString = "(";
 
                 newString = concat(newString, (char*)regexForWordAndSpace);
 
@@ -165,7 +179,7 @@ char* tokenToRegexString(const char* inputText)
 
             /* Add a final word to the regex */
             oldString = newString;
-            newString = concat(newString, (char*)regexForWord);
+            newString = concat(newString, (char*)regexForClosingWord);
 
             if (oldString != NULL)
             {
@@ -184,41 +198,82 @@ char* tokenToRegexString(const char* inputText)
         // Free up the substring
         pcre_free_substring(psubStrMatchStr);
     }
+    else
+    {
+        printf("ERROR: The token does not match specified format\n");
+        exit(1);
+    }
+
+    // Free up the regular expression.
+    pcre_free(reCompiled);
 
     return regexReturn;
 }
 
-int doRegexMatch(const char** inputText, const char** regexString, int* subStrVec)
+int doRegexMatch(const char* inputText, pcre* reCompiled, int* subStrVec)
 {
     int ret;
-    pcre *reCompiled;
-    const char *pcreErrorStr;
-    int pcreErrorOffset;
-
-    /* Build regex to decipher token */
-    reCompiled = pcre_compile(*regexString, 0, &pcreErrorStr, &pcreErrorOffset, NULL);
-
-    /* Check outcome of pcre_compile */
-    if(reCompiled == NULL)
-    {
-        printf("ERROR: Could not compile regex '%s': %s\n", *regexString, pcreErrorStr);
-        return PCRE_ERROR_BADOPTION;
-    }
 
     ret = pcre_exec(reCompiled,
                       NULL,
-                      *inputText,
-                      (int)strlen(*inputText),
+                      inputText,
+                      (int)strlen(inputText),
                       0,
                       0,
                       subStrVec,
                       30);
 
-    // Free up the regular expression.
-    pcre_free(reCompiled);
-
     return ret;
+}
 
+pcre* compileRegex(const char* regexString)
+{
+    pcre* reCompiled;
+    const char *pcreErrorStr;
+    int pcreErrorOffset;
+
+    /* Build regex to decipher token */
+    reCompiled = pcre_compile(regexString, 0, &pcreErrorStr, &pcreErrorOffset, NULL);
+
+    /* Check outcome of pcre_compile */
+    if(reCompiled == NULL)
+    {
+        printf("ERROR: Could not compile regex '%s': %s\n", regexString, pcreErrorStr);
+        exit(1);
+    }
+
+    return reCompiled;
+}
+
+void matchStdIn(char* regexString)
+{
+    int pcreExecRet;
+    int subStrVec[30];
+    pcre* reCompiled;
+    char *line = NULL;
+    size_t size;
+    int j;
+    const char* psubStrMatchStr;
+
+    reCompiled = compileRegex(regexString);
+
+    while (getline(&line, &size, stdin) != -1)
+    {
+        //printf("%s\n", line);
+        pcreExecRet = doRegexMatch(line, reCompiled, subStrVec);
+
+        /* There was a match */
+        if(pcreExecRet > 0)
+        {
+            for(j = 0; j < pcreExecRet; j++)
+            {
+                pcre_get_substring(line, subStrVec, pcreExecRet, j, &(psubStrMatchStr));
+                printf("Match(%2d/%2d): (%2d,%2d): '%s'\n", j, pcreExecRet-1, subStrVec[j*2], subStrVec[j*2+1], psubStrMatchStr);
+            }
+        }
+    }
+
+    pcre_free(reCompiled);
 }
 
 char* concat(char *stringOne, char *stringTwo)
