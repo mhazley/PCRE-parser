@@ -10,14 +10,14 @@ eg: "foo %{0} is a %{1}"
 
 The string can have modifiers:
 
-%{#} in an input string will match any
+`%{#}` in an input string will match any
 characters in its place.
 
-%{#S#} in an input string will match
+`%{#S#}` in an input string will match
 any characters including a fixed number
 of spaces in its place and it will capture.
 
-%{#G} in an input string will match
+`%{#G}` in an input string will match
 any characters in its place and it will
 capture.
 
