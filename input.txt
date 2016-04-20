@@ -1,6 +1,8 @@
+foo is a
 foo bar is a boat
-foo fuck is a flap
-foo fuck fuck is fuck fuck
-foo fuck fuck fuck fuck
+foo bar bar is a boat
+foo bar bar bar is a boat
+foo bur bur bur is a car
+
 
 

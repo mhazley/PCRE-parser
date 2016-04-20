@@ -1,3 +1,26 @@
+/*
+ * parser.c
+ *
+ * This program receives an input string
+ * and turns this into an appropriate Regex
+ * in order to perform matching using the
+ * PCRE library.
+ *
+ * The string can have modifiers:
+ *
+ * %{#} in an input string will match any
+ * characters in its place.
+ *
+ * %{#S#} in an input string will match
+ * any characters including a fixed number
+ * of spaces in its place and it will capture.
+ *
+ * %{#G} in an input string will match
+ * any characters in its place and it will
+ * capture.
+ *
+ */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -7,7 +30,7 @@
 
 #define TOKEN_REGEX     ( "%{(\\d+)([G]?|[S]\\d+)?}" )
 
-// We can match up to <wordsize> groups
+/* We can match up to 32 groups - each group is masked into this unsigned int */
 static unsigned int tokenMask = 0;
 
 int main(int argc, char ** argv)
@@ -20,25 +43,24 @@ int main(int argc, char ** argv)
     char* regExSegment = NULL;
     char* oldRegExSegment = NULL;
 
+    /* Tokenise the input string - easier to work with */
     buildTokenArray(argv[1], &tokenArray, &tokenCount);
 
-    // printf("%d\n", tokenCount);
-
+    /* Loop the tokens - need to find out which are modifiers */
     for (j = 0; j < tokenCount; j++ )
     {
-
+        /* Bit dirty - used for memory management in string concatenation */
         oldLineRegex = lineRegex;
-
         if (lineRegex == NULL) lineRegex = "";
 
+        /* Use the % chatacter to identify a modifer */
         if (tokenArray[j][0] == '%')
         {
-            /* This is a token capture sequence so we need to convert to a regex string */
-            // printf("%s\n", tokenToRegexString(tokenArray[j]));
+            /* This is a modifier so we need to convert to a regex */
             regExSegment = tokenToRegexString(tokenArray[j]);
         }
         else
-        {
+        {   /* Not a modifer so no need to convert */
             regExSegment = tokenArray[j];
         }
 
@@ -52,7 +74,7 @@ int main(int argc, char ** argv)
         /* Now, join the whole segment onto the final regex */
         lineRegex = concat(lineRegex, regExSegment);
 
-        /* Freeing the memory used in  main concatenation */
+        /* Freeing the memory used in concatenation */
         if (oldLineRegex != NULL)
         {
             free(oldLineRegex);
@@ -61,12 +83,16 @@ int main(int argc, char ** argv)
 
     printf("Built the following regex: %s\n", lineRegex);
 
-    // Run the match on std in
+    // Run the match on std in lines
     matchStdIn(lineRegex);
 
     return 0;
 }
 
+/*
+ * This function tokenises an input string using the <space> delimiter.
+ * It returns the count and an array of tokens by reference.
+ */
 void buildTokenArray(const char* inputText, char*** tokenArray, unsigned int* tokenCount)
 {
     const char* inputTextCopy;
@@ -96,7 +122,6 @@ void buildTokenArray(const char* inputText, char*** tokenArray, unsigned int* to
     token = strtok((char *)inputTextCopy, delimiters);
 
     /* Insert the tokens */
-    //while( token != NULL )
     for (j = 0; j < (*tokenCount); j++)
     {
         if(token != NULL)
@@ -110,23 +135,35 @@ void buildTokenArray(const char* inputText, char*** tokenArray, unsigned int* to
     return;
 }
 
+/*
+ * This function takes a modifer token and converts it to a regex.
+ *
+ * %{#} will match any characters in its place.
+ *
+ * %{#S#} will match any characters including a fixed number
+ * of spaces in its place and it will capture.
+ *
+ * %{#G} will match any characters in its place and it will
+ * capture.
+ *
+ * It returns a string which is the regex.
+ */
 char* tokenToRegexString(const char* inputText)
 {
     int pcreExecRet;
     int subStrVec[30];
     const char* regexString = TOKEN_REGEX;
-    const char* regexForWordAndSpace = "[\\S]*[\\s]";
-    const char* regexForClosingWord = "[\\S]*)";
+    const char* regexForWordAndSpace = "[\\S]{1,}[\\s]";
+    const char* regexForClosingWord = "[\\S]{1,})";
     const char* psubStrMatchStr;
     char* regexReturn = NULL;
     char* newString = NULL;
     char* oldString = NULL;
-
     int j;
     int tokenNumber;
-
     pcre* reCompiled;
 
+    /* Build a regex to match our modifiers with and attempt to match */
     reCompiled = compileRegex(regexString);
     pcreExecRet = doRegexMatch(inputText, reCompiled, subStrVec);
 
@@ -134,7 +171,7 @@ char* tokenToRegexString(const char* inputText)
     if(pcreExecRet > 0)
     {
         /* First make sure we haven't already got a token with this index */
-        /* Look at group 1 to inspect */
+        /* Look at group 1 capture to inspect */
         pcre_get_substring(inputText, subStrVec, pcreExecRet, 1, &(psubStrMatchStr));
 
         tokenNumber = atoi(psubStrMatchStr);
@@ -155,32 +192,48 @@ char* tokenToRegexString(const char* inputText)
         pcre_get_substring(inputText, subStrVec, pcreExecRet, 2, &(psubStrMatchStr));
         if (psubStrMatchStr[0] == 'G')
         {
+            /* Greedy so we need to capture any character in the modifiers place */
             printf("Token %d is a greedy modifier\n", tokenNumber);
-            regexReturn = "([\\s\\S]*)";
+            regexReturn = "([\\s\\S]{1,})";
         }
         else if (psubStrMatchStr[0] == 'S')
         {
+            /* Space so we need to capture any character in the modifiers place
+             * ONLY if there are a certain number of spaces.
+             *
+             *  Note: This works but its dirty I think - couldnt work out a regex
+             *  to search for 'any character with a certain number of non-consecutive
+             *  spaces' so I have (very) simply build up a regex including a fixed
+             *  number of spaces.
+             */
             printf("Token %d is a space modifier\n", tokenNumber);
 
             /* Add a word and space to the regex for each space */
             for (j = 0; j < atoi(&psubStrMatchStr[1]); j++)
             {
+                /* Used for memory management when concatenating */
                 oldString = newString;
 
                 if (newString == NULL) newString = "(";
 
+                /* Add a regexForWordAndSpace on to the output string */
                 newString = concat(newString, (char*)regexForWordAndSpace);
 
+                /* Freeing the old string used for memory management */
                 if (oldString != NULL)
                 {
                     free(oldString);
                 }
             }
 
-            /* Add a final word to the regex */
+
             oldString = newString;
+            /* This handles the case where no spaces are wanted */
+            if (newString == NULL) newString = "(";
+            /* Add a final word and bracket to the regex */
             newString = concat(newString, (char*)regexForClosingWord);
 
+            /* Freeing the old string used for memory management */
             if (oldString != NULL)
             {
                 free(oldString);
@@ -191,8 +244,9 @@ char* tokenToRegexString(const char* inputText)
         }
         else
         {
+            /* Token is just basic modifier - no capture required, any amount of any character accepted */
             printf("Token %d requires no capture\n", tokenNumber);
-            regexReturn = "[\\s\\S]*";
+            regexReturn = "[\\s\\S]{1,}";
         }
 
         // Free up the substring
@@ -210,6 +264,12 @@ char* tokenToRegexString(const char* inputText)
     return regexReturn;
 }
 
+/*
+ * Simply carries out the regex matching.
+ *
+ * Takes a compiled PCRE regex and an input string and returns the match
+ * and also the match vector via reference.
+ */
 int doRegexMatch(const char* inputText, pcre* reCompiled, int* subStrVec)
 {
     int ret;
@@ -226,13 +286,19 @@ int doRegexMatch(const char* inputText, pcre* reCompiled, int* subStrVec)
     return ret;
 }
 
+/*
+ * Simply builds a PCRE regex.
+ *
+ * Takes a text string of the regex as an argument and returns
+ * pointer to the PCRE regex.
+ */
 pcre* compileRegex(const char* regexString)
 {
     pcre* reCompiled;
     const char *pcreErrorStr;
     int pcreErrorOffset;
 
-    /* Build regex to decipher token */
+    /* Build regex from string*/
     reCompiled = pcre_compile(regexString, 0, &pcreErrorStr, &pcreErrorOffset, NULL);
 
     /* Check outcome of pcre_compile */
@@ -245,6 +311,11 @@ pcre* compileRegex(const char* regexString)
     return reCompiled;
 }
 
+/*
+ * Matches lines on stdin to a regex until EOF reached.
+ *
+ * Takes a text string of the regex as an argument.
+ */
 void matchStdIn(char* regexString)
 {
     int pcreExecRet;
@@ -255,27 +326,46 @@ void matchStdIn(char* regexString)
     int j;
     const char* psubStrMatchStr;
 
+    /* Build the regex */
     reCompiled = compileRegex(regexString);
 
+    /* Keep getting lines until there are none */
     while (getline(&line, &size, stdin) != -1)
     {
-        //printf("%s\n", line);
+        /* Attempt to match the line with compiled regex */
         pcreExecRet = doRegexMatch(line, reCompiled, subStrVec);
 
-        /* There was a match */
+        /* There was a match! */
         if(pcreExecRet > 0)
         {
+            printf("\n");
+
+            /* Do the output */
             for(j = 0; j < pcreExecRet; j++)
             {
                 pcre_get_substring(line, subStrVec, pcreExecRet, j, &(psubStrMatchStr));
-                printf("Match(%2d/%2d): (%2d,%2d): '%s'\n", j, pcreExecRet-1, subStrVec[j*2], subStrVec[j*2+1], psubStrMatchStr);
+                if (j == 0)
+                {
+                    printf("Matched:\t %s", psubStrMatchStr);
+                }
+                else
+                {
+                    printf("Captured:\t %s\n", psubStrMatchStr);
+                }
+
             }
         }
     }
 
+    /* Free the compiled regex - we are done */
     pcre_free(reCompiled);
+
+    return;
 }
 
+/*
+ * Simple concatenation function for two strings.
+ */
 char* concat(char *stringOne, char *stringTwo)
 {
     size_t len1 = strlen(stringOne);
