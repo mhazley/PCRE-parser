@@ -1,10 +1,7 @@
 PACKAGE = pcre_parser
 VERSION = 1
 
-# -ansi == ANSI C
-# -std=iso9899:199409 == ANSI C w/ Amendment 1
-# -std=c99 == ISO C99
-GCC_CMD = gcc -g
+GCC_CMD = gcc
 
 RELEASE_FILE = $(PACKAGE)
 
