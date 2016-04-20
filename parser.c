@@ -193,7 +193,7 @@ char* tokenToRegexString(const char* inputText)
         if (psubStrMatchStr[0] == 'G')
         {
             /* Greedy so we need to capture any character in the modifiers place */
-            printf("Token %d is a greedy modifier\n", tokenNumber);
+            printf("Modifier %d is a greedy modifier\n", tokenNumber);
             regexReturn = "([\\s\\S]{1,})";
         }
         else if (psubStrMatchStr[0] == 'S')
@@ -206,7 +206,7 @@ char* tokenToRegexString(const char* inputText)
              *  spaces' so I have (very) simply build up a regex including a fixed
              *  number of spaces.
              */
-            printf("Token %d is a space modifier\n", tokenNumber);
+            printf("Modifier %d is a space modifier\n", tokenNumber);
 
             /* Add a word and space to the regex for each space */
             for (j = 0; j < atoi(&psubStrMatchStr[1]); j++)
@@ -245,7 +245,7 @@ char* tokenToRegexString(const char* inputText)
         else
         {
             /* Token is just basic modifier - no capture required, any amount of any character accepted */
-            printf("Token %d requires no capture\n", tokenNumber);
+            printf("Modifier %d requires no capture\n", tokenNumber);
             regexReturn = "[\\s\\S]{1,}";
         }
 
