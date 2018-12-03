@@ -1,5 +1,5 @@
 # PCRE-parser
-Programming problem for Alert Logic second stage interview. 
+Programming problem for a second stage interview. 
 
 This program receives an input string
 and turns this into an appropriate Regex
